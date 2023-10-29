@@ -1,82 +1,111 @@
-package muctx_test
+package muctx
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/kormiltsev/library/muctx"
+	"github.com/stretchr/testify/require"
 )
 
+func TestNewMuctx(t *testing.T) {
+	mu := New()
+	assert.NotNil(t, mu)
+}
+
 func TestLock(t *testing.T) {
-	var testCases = []struct {
-		locked     bool
-		ctx        context.Context
-		expectBool bool
-	}{
-		{false, context.Background, true},
-		{true, context.WithTimeout(ctx, time.Duration(time.Second*2)), false},
-		{true, context.WithTimeout(ctx, time.Duration(time.Second*10)), true},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.param, func(t *testing.T) {
-			muctx := New()
-			if tc.locked {
-				muctx.Lock()
-			}
-
-go func(){
-	muctx.Unlock()
+	mu := New()
+	assert.True(t, mu.Lock())
 }
 
-			assert.Equal(t, tc.expectBool, muctx.Lock(tc.ctx))
-		})
+func TestUnlock(t *testing.T) {
+	mu := New()
+	require.True(t, mu.Lock())
+	assert.True(t, mu.Unlock())
+}
+
+func TestQueue(t *testing.T) {
+	mu := New()
+	mu.Lock()
+
+	ch := make(chan int)
+	for i := 0; i < 3; i++ {
+		go func(ch chan int, mu *Muctx, i int) {
+			mu.Lock()
+			ch <- i
+			mu.Unlock()
+		}(ch, mu, i)
+		time.Sleep(time.Second)
+	}
+	time.Sleep(500 * time.Millisecond)
+	mu.Unlock()
+
+	count := 0
+	for count < 3 {
+		// require same order. 0->1->2->....
+		require.Equal(t, count, <-ch)
+		count++
 	}
 }
 
-func main() {
-	ctx := context.Background()
+func TestUnlockMulti(t *testing.T) {
+	req := require.New(t)
 
-	a := muctx.New()
+	mu := New()
+	mu2 := New()
+	req.True(mu.Lock())
+	req.False(mu2.Unlock())
+	req.True(mu2.Lock())
 
-	ctx2, cancel := context.WithTimeout(ctx, time.Duration(time.Second*2))
+	// f := mu.Lock
+	// req.False(dedfunc(f))
+
+	// as.Never(func() bool { return mu.Lock() }, time.Duration(2*time.Second), time.Second)
+	req.True(mu.Unlock())
+	req.True(mu.Lock())
+	req.True(mu.Unlock())
+	req.False(mu.Unlock())
+	req.True(mu2.Unlock())
+}
+
+func TestTryCtx(t *testing.T) {
+	req := require.New(t)
+
+	mu := New()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second))
 	defer cancel()
 
-	a.Lock(ctx)
+	mu.Lock()
+	req.False(mu.LockTryCtx(ctx))
+}
 
-	fmt.Println("a locked, try lock b w/o ctx")
+func TestTry(t *testing.T) {
+	req := require.New(t)
 
-	b := muctx.New()
-	b.Lock(context.Background())
-	fmt.Println("b locked")
-	b.Unlock()
-	fmt.Println("b unlocked, try lock a with ctxTimeout 2 sec")
+	mu := New()
 
-	if a.Lock(ctx2) {
-		fmt.Println("error: can't lock a with ctxTimeout")
-		os.Exit(1)
-	}
+	mu.Lock()
+	req.False(mu.LockTry())
 
-	fmt.Println("a lock cancel (context done)\nTry to unlock a")
-
-	a.Unlock()
-
-	fmt.Println("a unlocked")
-
-	ctx3, cancel3 := context.WithTimeout(ctx, time.Duration(time.Second))
-	defer cancel3()
-
-	if !a.Lock(ctx3) {
-		fmt.Println("error: can't lock a")
-		os.Exit(1)
-	}
-
-	a.Unlock()
-
-	fmt.Println("DONE")
+	req.True(mu.Unlock())
+	req.True(mu.LockTry())
 
 }
+
+/// not working??
+// func dedfunc(f func() bool) bool {
+// 	res := make(chan bool)
+// 	go func(chan bool) {
+// 		time.Sleep(time.Second)
+// 		a := f()
+// 		res <- a
+// 	}(res)
+// 	select {
+// 	case <-time.After(1500 * time.Millisecond):
+// 		return false
+// 	case b := <-res:
+// 		return b
+// 	}
+// }
