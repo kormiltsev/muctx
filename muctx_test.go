@@ -1,3 +1,4 @@
+// test time is more than 4 seconds
 package muctx
 
 import (
@@ -57,11 +58,6 @@ func TestUnlockMulti(t *testing.T) {
 	req.True(mu.Lock())
 	req.False(mu2.Unlock())
 	req.True(mu2.Lock())
-
-	// f := mu.Lock
-	// req.False(dedfunc(f))
-
-	// as.Never(func() bool { return mu.Lock() }, time.Duration(2*time.Second), time.Second)
 	req.True(mu.Unlock())
 	req.True(mu.Lock())
 	req.True(mu.Unlock())
@@ -93,19 +89,3 @@ func TestTry(t *testing.T) {
 	req.True(mu.LockTry())
 
 }
-
-/// not working??
-// func dedfunc(f func() bool) bool {
-// 	res := make(chan bool)
-// 	go func(chan bool) {
-// 		time.Sleep(time.Second)
-// 		a := f()
-// 		res <- a
-// 	}(res)
-// 	select {
-// 	case <-time.After(1500 * time.Millisecond):
-// 		return false
-// 	case b := <-res:
-// 		return b
-// 	}
-// }

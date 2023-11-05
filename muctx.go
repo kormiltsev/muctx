@@ -1,5 +1,3 @@
-// test time is more than 4 seconds
-
 package muctx
 
 import (
@@ -7,6 +5,7 @@ import (
 	"time"
 )
 
+// Muctx supports Try method
 type Muctx struct {
 	Much     chan struct{}
 	Chqueue  chan chan struct{}
@@ -19,23 +18,27 @@ type job struct {
 	next     *job
 }
 
+// New returns mu
 func New() *Muctx {
 	mx := Muctx{Much: make(chan struct{}, 1), Chqueue: make(chan chan struct{})}
 	go mx.queue()
 	return &mx
 }
 
+// Lock set this mu as locked
 func (muctx *Muctx) Lock() bool {
 	ctx := context.Background()
 	return muctx.LockTryCtx(ctx)
 }
 
+// LockTry returns false if mu is locked now
 func (muctx *Muctx) LockTry() bool {
 	ctxTO, cancel := context.WithTimeout(context.Background(), time.Duration(200*time.Millisecond))
 	defer cancel()
 	return muctx.LockTryCtx(ctxTO)
 }
 
+// LockTryCtx retiurns false if mu not locked till contect Done. Returns true if success
 func (muctx *Muctx) LockTryCtx(ctx context.Context) bool {
 	ch := make(chan struct{})
 	muctx.Chqueue <- ch
@@ -49,6 +52,7 @@ func (muctx *Muctx) LockTryCtx(ctx context.Context) bool {
 	}
 }
 
+// Unlock releases mu
 func (muctx *Muctx) Unlock() bool {
 	select {
 	case <-muctx.Much:
@@ -58,6 +62,7 @@ func (muctx *Muctx) Unlock() bool {
 	}
 }
 
+// queue implements queue
 func (muctx *Muctx) queue() {
 	for {
 		select {
@@ -79,6 +84,7 @@ func (muctx *Muctx) queue() {
 	}
 }
 
+// nextjob implements Next
 func (muctx *Muctx) nextjob() bool {
 
 	if muctx.FirstJob == nil {
@@ -93,38 +99,3 @@ func (muctx *Muctx) nextjob() bool {
 	muctx.FirstJob = muctx.FirstJob.next
 	return true
 }
-
-// type muctx struct {
-// 	mu   sync.Mutex
-// 	chmu chan struct{}
-// }
-
-// // New returns new mutex with context
-// func New(mu ...sync.Mutex) *muctx {
-// 	if len(mu) == 1 {
-// 		return &muctx{
-// 			mu:   mu[0],
-// 			chmu: make(chan struct{}, 1),
-// 		}
-// 	}
-// 	return &muctx{
-// 		chmu: make(chan struct{}, 1),
-// 	}
-// }
-
-// // Lock returns true if mutex set. False is context Done. Will lock process till one of this results
-// func (mx *muctx) Lock(ctx context.Context) bool {
-// 	select {
-// 	case <-ctx.Done():
-// 		return false
-// 	case mx.chmu <- struct{}{}:
-// 		mx.mu.Lock()
-// 		return true
-// 	}
-// }
-
-// // Unlock release mutex
-// func (mx *muctx) Unlock() {
-// 	<-mx.chmu
-// 	mx.mu.Unlock()
-// }
