@@ -13,6 +13,7 @@ type Muctx struct {
 	LastJob  *job
 }
 
+// job is request for Lock mu
 type job struct {
 	handchan chan struct{}
 	next     *job
